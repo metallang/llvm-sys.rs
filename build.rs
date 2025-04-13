@@ -2,16 +2,16 @@ extern crate anyhow;
 extern crate cc;
 #[macro_use]
 extern crate lazy_static;
+extern crate cached_path;
 extern crate regex_lite;
 extern crate semver;
-extern crate cached_path;
 
+use cached_path::{Cache, Options};
 use std::env;
 use std::ffi::OsStr;
 use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use cached_path::{cached_path_with_options, Options};
 
 use anyhow::Context as _;
 use regex_lite::Regex;
@@ -93,42 +93,64 @@ fn locate_llvm_config() -> Option<PathBuf> {
     let p = if let Some(llvm_loc) = env::var_os(&*ENV_LLVM_PREFIX) {
         PathBuf::from(llvm_loc)
     } else {
-        let download_prefix = format!("https://github.com/metallang/llvm-builds/releases/download/{}.x", CRATE_VERSION.major);
+        let download_prefix = format!(
+            "https://github.com/metallang/llvm-builds/releases/download/{}.x",
+            CRATE_VERSION.major
+        );
+        let mut cdir: PathBuf = std::env::var("OUT_DIR").unwrap().into();
+        cdir.pop();
+        cdir.pop();
+        cdir.pop();
+        cdir.pop();
+        let cdir = cdir.join("llvm");
+        let _ = std::fs::create_dir(&cdir);
+
+        let cache = Cache::builder().dir(cdir.into()).build().unwrap();
 
         if target_os_is("windows") {
             println!("{}", env::var("CARGO_CFG_TARGET_ARCH").unwrap());
             if !target_arch_is("x86_64") && !target_arch_is("x86") {
                 panic!("Only x86_64 builds are built for Metal LLVM currently.");
             }
-            cached_path_with_options(
-                &format!("{}/{}", download_prefix, "llvm-windows-amd64.tar.xz"),
-                &Options::default().extract()
-            ).expect("Failed to download LLVM binaries")
+            cache
+                .cached_path_with_options(
+                    &format!("{}\\{}", download_prefix, "llvm-windows-amd64.tar.xz"),
+                    &Options::default().extract(),
+                )
+                .expect("Failed to download LLVM binaries")
         } else if target_os_is("macos") {
             if target_arch_is("x86_64") {
-                cached_path_with_options(
-                    &format!("{}/{}", download_prefix, "llvm-darwin-amd64.tar.xz"),
-                    &Options::default().extract()
-                ).expect("Failed to download LLVM binaries")
+                cache
+                    .cached_path_with_options(
+                        &format!("{}/{}", download_prefix, "llvm-darwin-amd64.tar.xz"),
+                        &Options::default().extract(),
+                    )
+                    .expect("Failed to download LLVM binaries")
             } else if target_arch_is("arm") || target_arch_is("aarch64") {
-                cached_path_with_options(
-                    &format!("{}/{}", download_prefix, "llvm-darwin-aarch64.tar.xz"),
-                    &Options::default().extract()
-                ).expect("Failed to download LLVM binaries")
+                cache
+                    .cached_path_with_options(
+                        &format!("{}/{}", download_prefix, "llvm-darwin-aarch64.tar.xz"),
+                        &Options::default().extract(),
+                    )
+                    .expect("Failed to download LLVM binaries")
             } else {
                 panic!("Architecture is not supported as a MacOS target")
             }
         } else if target_os_is("linux") {
             if target_arch_is("x86_64") {
-                cached_path_with_options(
-                    &format!("{}/{}", download_prefix, "llvm-linux-amd64.tar.xz"),
-                    &Options::default().extract()
-                ).expect("Failed to download LLVM binaries")
+                cache
+                    .cached_path_with_options(
+                        &format!("{}/{}", download_prefix, "llvm-linux-amd64.tar.xz"),
+                        &Options::default().extract(),
+                    )
+                    .expect("Failed to download LLVM binaries")
             } else if target_arch_is("arm") || target_arch_is("aarch64") {
-                cached_path_with_options(
-                    &format!("{}/{}", download_prefix, "llvm-linux-aarch64.tar.xz"),
-                    &Options::default().extract()
-                ).expect("Failed to download LLVM binaries")
+                cache
+                    .cached_path_with_options(
+                        &format!("{}/{}", download_prefix, "llvm-linux-aarch64.tar.xz"),
+                        &Options::default().extract(),
+                    )
+                    .expect("Failed to download LLVM binaries")
             } else {
                 panic!("Architecture is not supported as a Linux target")
             }
@@ -156,7 +178,11 @@ fn locate_llvm_config() -> Option<PathBuf> {
         }
     }
 
-    None
+    if target_os_is("windows") {
+        Some(prefix.join("llvm-config.exe"))
+    } else {
+        Some(prefix.join("llvm-config"))
+    }
 }
 
 fn llvm_compatible_binary_name(prefix: &Path) -> Option<PathBuf> {
