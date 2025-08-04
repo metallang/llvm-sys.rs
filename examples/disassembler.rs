@@ -23,7 +23,7 @@ fn main() -> IoResult<()> {
         LLVM_InitializeAllTargetMCs();
         LLVM_InitializeAllDisassemblers();
         LLVMCreateDisasm(
-            "x86_64\0".as_ptr() as *const c_char,
+            c"x86_64".as_ptr() as *const c_char,
             ptr::null_mut(),
             0,
             None,

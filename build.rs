@@ -1,15 +1,5 @@
-extern crate anyhow;
-extern crate cc;
-#[macro_use]
-extern crate lazy_static;
-extern crate cached_path;
-extern crate regex_lite;
-extern crate semver;
-
 use cached_path::{Cache, Options};
-use std::env;
 use std::ffi::OsStr;
-use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -21,7 +11,7 @@ use semver::Version;
 //
 // When adding new ones, they should also be added to main() to force a
 // rebuild if they are changed.
-lazy_static! {
+lazy_static::lazy_static! {
     /// A single path to search for LLVM in (containing bin/llvm-config)
     static ref ENV_LLVM_PREFIX: String =
         format!("LLVM_SYS_{}_PREFIX", env!("CARGO_PKG_VERSION_MAJOR"));
@@ -47,7 +37,10 @@ lazy_static! {
         format!("LLVM_SYS_{}_FFI_WORKAROUND", env!("CARGO_PKG_VERSION_MAJOR"));
 }
 
-lazy_static! {
+/// Auto-download (useful to disable when working on low-bandwidth connections).
+const ENV_AUTODOWNLOAD: &str = "LLVM_SYS_AUTODOWNLOAD";
+
+lazy_static::lazy_static! {
     /// LLVM version used by this version of the crate.
     static ref CRATE_VERSION: Version = {
         let crate_version = Version::parse(env!("CARGO_PKG_VERSION"))
@@ -61,21 +54,21 @@ lazy_static! {
 }
 
 fn target_env_is(name: &str) -> bool {
-    match env::var_os("CARGO_CFG_TARGET_ENV") {
+    match std::env::var_os("CARGO_CFG_TARGET_ENV") {
         Some(s) => s == name,
         None => false,
     }
 }
 
 fn target_os_is(name: &str) -> bool {
-    match env::var_os("CARGO_CFG_TARGET_OS") {
+    match std::env::var_os("CARGO_CFG_TARGET_OS") {
         Some(s) => s == name,
         None => false,
     }
 }
 
 fn target_arch_is(name: &str) -> bool {
-    match env::var_os("CARGO_CFG_TARGET_ARCH") {
+    match std::env::var_os("CARGO_CFG_TARGET_ARCH") {
         Some(s) => s == name,
         None => false,
     }
@@ -90,9 +83,13 @@ fn target_arch_is(name: &str) -> bool {
 ///
 /// Returns None on failure.
 fn locate_llvm_config() -> Option<PathBuf> {
-    let p = if let Some(llvm_loc) = env::var_os(&*ENV_LLVM_PREFIX) {
+    let p = if let Some(llvm_loc) = std::env::var_os(&*ENV_LLVM_PREFIX) {
         PathBuf::from(llvm_loc)
     } else {
+        if std::env::var(ENV_AUTODOWNLOAD).is_ok_and(|autodownload| autodownload == "no") {
+            return None;
+        }
+
         let download_prefix = format!(
             "https://github.com/metallang/llvm-builds/releases/download/{}.x",
             CRATE_VERSION.major
@@ -105,10 +102,10 @@ fn locate_llvm_config() -> Option<PathBuf> {
         let cdir = cdir.join("llvm");
         let _ = std::fs::create_dir(&cdir);
 
-        let cache = Cache::builder().dir(cdir.into()).build().unwrap();
+        let cache = Cache::builder().dir(cdir).build().unwrap();
 
         if target_os_is("windows") {
-            println!("{}", env::var("CARGO_CFG_TARGET_ARCH").unwrap());
+            println!("{}", std::env::var("CARGO_CFG_TARGET_ARCH").unwrap());
             if !target_arch_is("x86_64") && !target_arch_is("x86") {
                 panic!("Only x86_64 builds are built for Metal LLVM currently.");
             }
@@ -202,8 +199,8 @@ fn llvm_compatible_binary_name(prefix: &Path) -> Option<PathBuf> {
                 );
             }
             Err(e) => {
-                if e.downcast_ref::<io::Error>()
-                    .map_or(false, |e| e.kind() == ErrorKind::NotFound)
+                if e.downcast_ref::<std::io::Error>()
+                    .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound)
                 {
                     // Looks like we failed to execute any llvm-config. Keep
                     // searching.
@@ -248,7 +245,7 @@ fn llvm_config_binary_names() -> impl Iterator<Item = String> {
 fn is_blocklisted_llvm(llvm_version: &Version) -> Option<&'static str> {
     static BLOCKLIST: &[(u64, u64, u64, &str)] = &[];
 
-    if let Some(x) = env::var_os(&*ENV_IGNORE_BLOCKLIST) {
+    if let Some(x) = std::env::var_os(&*ENV_IGNORE_BLOCKLIST) {
         if &x == "YES" {
             println!(
                 "cargo:warning=ignoring blocklist entry for LLVM {}",
@@ -291,7 +288,7 @@ fn is_compatible_llvm(llvm_version: &Version) -> bool {
     }
 
     let strict =
-        env::var_os(&*ENV_STRICT_VERSIONING).is_some() || cfg!(feature = "strict-versioning");
+        std::env::var_os(&*ENV_STRICT_VERSIONING).is_some() || cfg!(feature = "strict-versioning");
     if strict {
         llvm_version.major == CRATE_VERSION.major && llvm_version.minor == CRATE_VERSION.minor
     } else {
@@ -713,7 +710,7 @@ fn get_llvm_cflags(llvm_config_path: &Path) -> String {
     // include flags that aren't understood by the default compiler we're
     // using. Unless requested otherwise, clean CFLAGS of options that are
     // known to be possibly-harmful.
-    let no_clean = env::var_os(&*ENV_NO_CLEAN_CFLAGS).is_some();
+    let no_clean = std::env::var_os(&*ENV_NO_CLEAN_CFLAGS).is_some();
     if no_clean || target_env_is("msvc") {
         // MSVC doesn't accept -W... options, so don't try to strip them and
         // possibly strip something that should be retained. Also do nothing if
@@ -736,7 +733,7 @@ fn is_llvm_debug(llvm_config_path: &Path) -> bool {
 fn main() {
     // Behavior can be significantly affected by these vars.
     println!("cargo:rerun-if-env-changed={}", &*ENV_LLVM_PREFIX);
-    if let Ok(path) = env::var(&*ENV_LLVM_PREFIX) {
+    if let Ok(path) = std::env::var(&*ENV_LLVM_PREFIX) {
         println!("cargo:rerun-if-changed={}", path);
     }
 
@@ -803,14 +800,14 @@ fn main() {
         println!("cargo:rustc-link-lib={}={}", sys_lib_kind.string(), name);
     }
 
-    let use_debug_msvcrt = env::var_os(&*ENV_USE_DEBUG_MSVCRT).is_some();
+    let use_debug_msvcrt = std::env::var_os(&*ENV_USE_DEBUG_MSVCRT).is_some();
     if target_env_is("msvc") && (use_debug_msvcrt || is_llvm_debug(&llvm_config_path)) {
         println!("cargo:rustc-link-lib=msvcrtd");
     }
 
     // Link libffi if the user requested this workaround.
     // See https://bitbucket.org/tari/llvm-sys.rs/issues/12/
-    let force_ffi = env::var_os(&*ENV_FORCE_FFI).is_some();
+    let force_ffi = std::env::var_os(&*ENV_FORCE_FFI).is_some();
     if force_ffi {
         println!("cargo:rustc-link-lib=dylib=ffi");
     }

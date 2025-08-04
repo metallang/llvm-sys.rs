@@ -8,7 +8,7 @@ fn main() {
     unsafe {
         // Set up a context, module and builder in that context.
         let context = llvm::core::LLVMContextCreate();
-        let module = llvm::core::LLVMModuleCreateWithName(b"nop\0".as_ptr() as *const _);
+        let module = llvm::core::LLVMModuleCreateWithName(c"nop".as_ptr() as *const _);
         let builder = llvm::core::LLVMCreateBuilderInContext(context);
 
         // Get the type signature for void nop(void);
@@ -16,14 +16,14 @@ fn main() {
         let void = llvm::core::LLVMVoidTypeInContext(context);
         let function_type = llvm::core::LLVMFunctionType(void, ptr::null_mut(), 0, 0);
         let function =
-            llvm::core::LLVMAddFunction(module, b"nop\0".as_ptr() as *const _, function_type);
+            llvm::core::LLVMAddFunction(module, c"nop".as_ptr() as *const _, function_type);
 
         // Create a basic block in the function and set our builder to generate
         // code in it.
         let bb = llvm::core::LLVMAppendBasicBlockInContext(
             context,
             function,
-            b"entry\0".as_ptr() as *const _,
+            c"entry".as_ptr() as *const _,
         );
         llvm::core::LLVMPositionBuilderAtEnd(builder, bb);
 

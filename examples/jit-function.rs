@@ -11,7 +11,7 @@ fn main() {
     unsafe {
         // Set up a context, module and builder in that context.
         let context = LLVMContextCreate();
-        let module = LLVMModuleCreateWithNameInContext(b"sum\0".as_ptr() as *const _, context);
+        let module = LLVMModuleCreateWithNameInContext(c"sum".as_ptr() as *const _, context);
         let builder = LLVMCreateBuilderInContext(context);
 
         // get a type for sum function
@@ -20,11 +20,11 @@ fn main() {
         let function_type = LLVMFunctionType(i64t, argts.as_mut_ptr(), argts.len() as u32, 0);
 
         // add it to our module
-        let function = LLVMAddFunction(module, b"sum\0".as_ptr() as *const _, function_type);
+        let function = LLVMAddFunction(module, c"sum".as_ptr() as *const _, function_type);
 
         // Create a basic block in the function and set our builder to generate
         // code in it.
-        let bb = LLVMAppendBasicBlockInContext(context, function, b"entry\0".as_ptr() as *const _);
+        let bb = LLVMAppendBasicBlockInContext(context, function, c"entry".as_ptr() as *const _);
 
         LLVMPositionBuilderAtEnd(builder, bb);
 
@@ -33,8 +33,8 @@ fn main() {
         let y = LLVMGetParam(function, 1);
         let z = LLVMGetParam(function, 2);
 
-        let sum = LLVMBuildAdd(builder, x, y, b"sum.1\0".as_ptr() as *const _);
-        let sum = LLVMBuildAdd(builder, sum, z, b"sum.2\0".as_ptr() as *const _);
+        let sum = LLVMBuildAdd(builder, x, y, c"sum.1".as_ptr() as *const _);
+        let sum = LLVMBuildAdd(builder, sum, z, c"sum.2".as_ptr() as *const _);
 
         // Emit a `ret i64` into the function to return the computed sum.
         LLVMBuildRet(builder, sum);
@@ -70,7 +70,7 @@ fn main() {
             ee.assume_init()
         };
 
-        let addr = LLVMGetFunctionAddress(ee, b"sum\0".as_ptr() as *const _);
+        let addr = LLVMGetFunctionAddress(ee, c"sum".as_ptr() as *const _);
 
         let f: extern "C" fn(u64, u64, u64) -> u64 = mem::transmute(addr);
 
