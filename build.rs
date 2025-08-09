@@ -37,9 +37,6 @@ lazy_static::lazy_static! {
         format!("LLVM_SYS_{}_FFI_WORKAROUND", env!("CARGO_PKG_VERSION_MAJOR"));
 }
 
-/// Auto-download (useful to disable when working on low-bandwidth connections).
-const ENV_AUTODOWNLOAD: &str = "LLVM_SYS_AUTODOWNLOAD";
-
 lazy_static::lazy_static! {
     /// LLVM version used by this version of the crate.
     static ref CRATE_VERSION: Version = {
@@ -86,10 +83,6 @@ fn locate_llvm_config() -> Option<PathBuf> {
     let p = if let Some(llvm_loc) = std::env::var_os(&*ENV_LLVM_PREFIX) {
         PathBuf::from(llvm_loc)
     } else {
-        if std::env::var(ENV_AUTODOWNLOAD).is_ok_and(|autodownload| autodownload == "no") {
-            return None;
-        }
-
         let download_prefix = format!(
             "https://github.com/metallang/llvm-builds/releases/download/{}.x",
             CRATE_VERSION.major
@@ -742,6 +735,11 @@ fn main() {
     println!("cargo:rerun-if-env-changed={}", &*ENV_NO_CLEAN_CFLAGS);
     println!("cargo:rerun-if-env-changed={}", &*ENV_USE_DEBUG_MSVCRT);
     println!("cargo:rerun-if-env-changed={}", &*ENV_FORCE_FFI);
+
+    if option_env!("LLVM_SYS_DISABLE").is_some() {
+        println!("cargo::rustc-cfg=feature=\"no-llvm-linking\"");
+        return;
+    }
 
     if cfg!(feature = "no-llvm-linking") && cfg!(feature = "disable-alltargets-init") {
         // exit early as we don't need to do anything and llvm-config isn't needed at all
